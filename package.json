@@ -1,0 +1,40 @@
+{
+  "name": "serverless-plugin-stage-reserved-concurrency",
+  "version": "0.1.0",
+  "description": "This plugin allows you to configure different reserved concurrency values for your Lambda functions depending on the deployment environment",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "serverless",
+    "serverless-plugin",
+    "lambda",
+    "aws",
+    "reserved-concurrency",
+    "stage"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.25",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "chalk": "^5.6.0",
+    "p-limit": "^3.1.0"
+  },
+  "peerDependencies": {
+    "serverless": "^3.0.0 || ^4.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
