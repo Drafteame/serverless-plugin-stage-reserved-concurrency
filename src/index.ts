@@ -7,7 +7,20 @@ import {
 } from './interfaces';
 import chalk from 'chalk';
 
+interface FunctionConfig {
+  reservedConcurrency?: number;
+  [key: string]: any;
+}
+
+interface ProcessingResult {
+  modifiedCount: number;
+  errorCount: number;
+}
+
 class StageBasedConcurrencyPlugin {
+  private static readonly WARMUP_FUNCTION_IDENTIFIER = 'warmUp';
+  private static readonly DEV_STAGES = ['dev', 'development', 'feature'];
+  private static readonly AWS_CONCURRENCY_BATCH_SIZE = 5;
   private serverless: Serverless;
   private provider: ServerlessProvider;
   private log: Logger;
@@ -40,97 +53,175 @@ class StageBasedConcurrencyPlugin {
     private _isDevelopmentStage(stage: string): boolean {
       const lowerStage = stage.toLowerCase();
       return (
-        lowerStage === 'dev' ||
-        lowerStage === 'development' ||
-        lowerStage === 'feature' ||
+        StageBasedConcurrencyPlugin.DEV_STAGES.includes(lowerStage) ||
         lowerStage.startsWith('feature-')
       );
     }
 
     async _removeReservedConcurrencyFromSLS(): Promise<void> {
       return this._measureExecutionTime('Remove reserved concurrency from Serverless config', async () => {
+        const functions = (this.serverless.service.functions ?? {}) as Record<string, FunctionConfig>;
+        const result = this._processServerlessConfigFunctions(functions);
+        this._logServerlessConfigResult(result);
+      });
+    }
 
-        const functions = this.serverless.service.functions || {};
-        let modifiedCount = 0;
-        
-        Object.entries(functions).forEach(([functionName, functionConfig]) => {
-          const config = functionConfig as any;
-        
-          if (config.reservedConcurrency !== undefined) {
-            this.log.info(`Removing reserved concurrency from Serverless config for function: ${functionName}`);
-            delete config.reservedConcurrency;
-            modifiedCount++;
-          }
-        });
-    
-        if (modifiedCount > 0) {
-          this.log.info(`Modified ${modifiedCount} functions to remove reserved concurrency settings`);
-        } else {
-          this.log.info('No functions with reserved concurrency found in Serverless config');
+    private _processServerlessConfigFunctions(functions: Record<string, FunctionConfig>): ProcessingResult {
+      let modifiedCount = 0;
+      
+      Object.entries(functions).forEach(([functionName, functionConfig]) => {
+        if (this._removeConcurrencyFromFunction(functionName, functionConfig)) {
+          modifiedCount++;
         }
       });
+      
+      return { modifiedCount, errorCount: 0 };
+    }
+
+    private _removeConcurrencyFromFunction(functionName: string, config: FunctionConfig): boolean {
+      if (config.reservedConcurrency !== undefined) {
+        this.log.info(`Removing reserved concurrency from Serverless config for function: ${functionName}`);
+        delete config.reservedConcurrency;
+        return true;
+      }
+      return false;
+    }
+
+    private _logServerlessConfigResult(result: ProcessingResult): void {
+      if (result.modifiedCount > 0) {
+        this.log.info(`Modified ${result.modifiedCount} functions to remove reserved concurrency settings`);
+      } else {
+        this.log.info('No functions with reserved concurrency found in Serverless config');
+      }
     }
 
     async _removeReservedConcurrencyFromAws(): Promise<void> {
       return this._measureExecutionTime('Remove reserved concurrency from AWS for all functions', async () => {
-        const functions = this.serverless.service.functions || {};
-        let modifiedCount = 0;
-        
-        await Promise.all(Object.entries(functions).map(async ([functionName, _]) => {
-          const awsFunctionName = this._getFunctionName(functionName);
-          const config = await this.provider.request('Lambda', 'getFunctionConfiguration', { FunctionName: awsFunctionName });
-          if (config.ReservedConcurrentExecutions !== undefined) {
-            this.log.info(`Removing reserved concurrency from AWS for function: ${awsFunctionName}`);
-            await this.provider.request('Lambda', 'deleteFunctionConcurrency', {
-              FunctionName: awsFunctionName
-            });
-            this.log.info(`Successfully removed reserved concurrency from AWS for function: ${awsFunctionName}`);
-            modifiedCount++;
-          }
-        }));
-    
-        if (modifiedCount > 0) {
-          this.log.info(`Modified ${modifiedCount} functions to remove reserved concurrency settings`);
-        } else {
-          this.log.info('No functions with reserved concurrency found in Serverless config');
-        }
+        const functions = (this.serverless.service.functions ?? {}) as Record<string, FunctionConfig>;
+        const result = await this._processAwsFunctionsInBatches(Object.entries(functions) as [string, FunctionConfig][]);
+        this._logAwsResult(result);
       });
     }
 
-    private async _removeReservedConcurrencyFromAwsForFunction(): Promise<void> {
-      return this._measureExecutionTime('Remove reserved concurrency from AWS', async () => {
-        const functionName = this.options.function;
-
-        if (!functionName) {
-          this.log.error('No function specified');
-          return;
-        }
-
-        this.log.info(`Removing reserved concurrency from AWS for function: ${functionName}`);
+    private async _processAwsFunctionsInBatches(functionEntries: [string, FunctionConfig][]): Promise<ProcessingResult> {
+      let modifiedCount = 0;
+      let errorCount = 0;
+      
+      const batchSize = StageBasedConcurrencyPlugin.AWS_CONCURRENCY_BATCH_SIZE;
+      
+      for (let i = 0; i < functionEntries.length; i += batchSize) {
+        const batch = functionEntries.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          batch.map(([functionName, _]) => this._processAwsFunction(functionName))
+        );
         
-        if (functionName.includes('warmUp')) {
-          this.log.info(`Skipping warmUp function: ${functionName}`);
-          return;
-        }
+        batchResults.forEach(result => {
+          modifiedCount += result.modifiedCount;
+          errorCount += result.errorCount;
+        });
+      }
+      
+      return { modifiedCount, errorCount };
+    }
 
+    private async _processAwsFunction(functionName: string): Promise<ProcessingResult> {
+      try {
         const awsFunctionName = this._getFunctionName(functionName);
+        
+        if (this._shouldSkipFunction(awsFunctionName)) {
+          this.log.info(`Skipping warmUp function: ${awsFunctionName}`);
+          return { modifiedCount: 0, errorCount: 0 };
+        }
+        
+        const hasReservedConcurrency = await this._checkAndRemoveReservedConcurrency(awsFunctionName);
+        return { modifiedCount: hasReservedConcurrency ? 1 : 0, errorCount: 0 };
+        
+      } catch (error) {
+        this.log.error(`Error removing reserved concurrency from AWS for function ${functionName}: ${(error as Error).message}`);
+        return { modifiedCount: 0, errorCount: 1 };
+      }
+    }
 
-        const config = await this.provider.request('Lambda', 'getFunctionConfiguration', {
+    private _shouldSkipFunction(awsFunctionName: string): boolean {
+      return awsFunctionName.includes(StageBasedConcurrencyPlugin.WARMUP_FUNCTION_IDENTIFIER);
+    }
+
+    private async _checkAndRemoveReservedConcurrency(awsFunctionName: string): Promise<boolean> {
+      const config = await this.provider.request('Lambda', 'getFunctionConfiguration', { 
+        FunctionName: awsFunctionName 
+      });
+      
+      if (config.ReservedConcurrentExecutions !== undefined) {
+        this.log.info(`Removing reserved concurrency from AWS for function: ${awsFunctionName}`);
+        await this.provider.request('Lambda', 'deleteFunctionConcurrency', {
           FunctionName: awsFunctionName
         });
-            
-        if (config.ReservedConcurrentExecutions !== undefined) {
-          this.log.info(`Removing reserved concurrency from AWS for function: ${awsFunctionName}`);
-          
-          await this.provider.request('Lambda', 'deleteFunctionConcurrency', {
-            FunctionName: awsFunctionName
-          });
-              
-          this.log.info(`Successfully removed reserved concurrency from AWS for function: ${awsFunctionName}`);
-        } else {
-          this.log.info(`No reserved concurrency found for function: ${awsFunctionName}`);
+        this.log.info(`Successfully removed reserved concurrency from AWS for function: ${awsFunctionName}`);
+        return true;
+      }
+      
+      return false;
+    }
+
+    private _logAwsResult(result: ProcessingResult): void {
+      if (result.modifiedCount > 0) {
+        this.log.info(`Successfully removed reserved concurrency from AWS for ${result.modifiedCount} functions`);
+      } else if (result.errorCount === 0) {
+        this.log.info('No functions with reserved concurrency found in AWS');
+      }
+      
+      if (result.errorCount > 0) {
+        this.log.error(`Failed to remove reserved concurrency for ${result.errorCount} functions`);
+      }
+    }
+
+    private async _removeReservedConcurrencyFromAwsForFunction(): Promise<void> {
+      return this._measureExecutionTime('Remove reserved concurrency from AWS for single function', async () => {
+        const functionName = this.options.function;
+
+        if (!this._validateFunctionName(functionName)) {
+          return;
         }
+
+        const result = await this._processSingleAwsFunction(functionName!);
+        this._logSingleFunctionResult(functionName!, result);
       });
+    }
+
+    private _validateFunctionName(functionName: string | undefined): functionName is string {
+      if (!functionName) {
+        this.log.error('No function specified');
+        return false;
+      }
+      return true;
+    }
+
+    private async _processSingleAwsFunction(functionName: string): Promise<ProcessingResult> {
+      try {
+        const awsFunctionName = this._getFunctionName(functionName);
+        
+        if (this._shouldSkipFunction(awsFunctionName)) {
+          this.log.info(`Skipping warmUp function: ${awsFunctionName}`);
+          return { modifiedCount: 0, errorCount: 0 };
+        }
+
+        const hasReservedConcurrency = await this._checkAndRemoveReservedConcurrency(awsFunctionName);
+        return { modifiedCount: hasReservedConcurrency ? 1 : 0, errorCount: 0 };
+        
+      } catch (error) {
+        this.log.error(`Error removing reserved concurrency from AWS for function ${functionName}: ${(error as Error).message}`);
+        return { modifiedCount: 0, errorCount: 1 };
+      }
+    }
+
+    private _logSingleFunctionResult(functionName: string, result: ProcessingResult): void {
+      const awsFunctionName = this._getFunctionName(functionName);
+      
+      if (result.modifiedCount > 0) {
+        this.log.info(`Successfully removed reserved concurrency from AWS for function: ${awsFunctionName}`);
+      } else if (result.errorCount === 0) {
+        this.log.info(`No reserved concurrency found for function: ${awsFunctionName}`);
+      }
     }
 
 
