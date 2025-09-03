@@ -53,10 +53,11 @@ class StageBasedConcurrencyPlugin {
         const functions = this.serverless.service.functions || {};
         let modifiedCount = 0;
         
-        Object.entries(functions).forEach(([_, functionConfig]) => {
+        Object.entries(functions).forEach(([functionName, functionConfig]) => {
           const config = functionConfig as any;
         
           if (config.reservedConcurrency !== undefined) {
+            this.log.info(`Removing reserved concurrency from Serverless config for function: ${functionName}`);
             delete config.reservedConcurrency;
             modifiedCount++;
           }
@@ -76,12 +77,14 @@ class StageBasedConcurrencyPlugin {
         let modifiedCount = 0;
         
         await Promise.all(Object.entries(functions).map(async ([functionName, _]) => {
-          const config = await this.provider.request('Lambda', 'getFunctionConfiguration', { FunctionName: functionName });
+          const awsFunctionName = this._getFunctionName(functionName);
+          const config = await this.provider.request('Lambda', 'getFunctionConfiguration', { FunctionName: awsFunctionName });
           if (config.ReservedConcurrentExecutions !== undefined) {
-            const awsFunctionName = this._getFunctionName(functionName);
+            this.log.info(`Removing reserved concurrency from AWS for function: ${awsFunctionName}`);
             await this.provider.request('Lambda', 'deleteFunctionConcurrency', {
               FunctionName: awsFunctionName
             });
+            this.log.info(`Successfully removed reserved concurrency from AWS for function: ${awsFunctionName}`);
             modifiedCount++;
           }
         }));
@@ -117,15 +120,15 @@ class StageBasedConcurrencyPlugin {
         });
             
         if (config.ReservedConcurrentExecutions !== undefined) {
-          this.log.info(`Removing reserved concurrency from AWS for function: ${functionName}`);
+          this.log.info(`Removing reserved concurrency from AWS for function: ${awsFunctionName}`);
           
           await this.provider.request('Lambda', 'deleteFunctionConcurrency', {
             FunctionName: awsFunctionName
           });
               
-          this.log.info(`Successfully removed reserved concurrency from AWS for function: ${functionName}`);
+          this.log.info(`Successfully removed reserved concurrency from AWS for function: ${awsFunctionName}`);
         } else {
-          this.log.info(`No reserved concurrency found for function: ${functionName}`);
+          this.log.info(`No reserved concurrency found for function: ${awsFunctionName}`);
         }
       });
     }
