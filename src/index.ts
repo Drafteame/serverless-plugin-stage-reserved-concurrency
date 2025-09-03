@@ -36,6 +36,8 @@ class StageBasedConcurrencyPlugin {
       this.hooks = {
         'before:deploy:deploy': this._removeReservedConcurrencyFromSLS.bind(this),
         'before:deploy:function:deploy': this._removeReservedConcurrencyFromSLS.bind(this),
+        'before:package:createDeploymentArtifacts': this._removeReservedConcurrencyFromSLS.bind(this),
+        'before:aws:deploy:deploy:createStack': this._removeReservedConcurrencyFromSLS.bind(this),
         'after:aws:deploy:deploy:updateStack': this._removeReservedConcurrencyFromAws.bind(this),
         'after:deploy:function:deploy': this._removeReservedConcurrencyFromAwsForFunction.bind(this),
       };
@@ -98,7 +100,6 @@ class StageBasedConcurrencyPlugin {
   private async _processAwsFunctionsInBatches(functionEntries: [string, FunctionConfig][]): Promise<ProcessingResult> {
     let modifiedCount = 0;
     let errorCount = 0;
-
     const batchSize = StageBasedConcurrencyPlugin.AWS_CONCURRENCY_BATCH_SIZE;
 
     for (let i = 0; i < functionEntries.length; i += batchSize) {
