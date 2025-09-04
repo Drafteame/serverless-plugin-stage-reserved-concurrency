@@ -21,7 +21,7 @@ jobs:
       version: ${{ steps.cz.outputs.version }}
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.ACCESS_TOKEN }}
@@ -70,7 +70,7 @@ jobs:
       - bump_version
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.ACCESS_TOKEN }}
@@ -104,7 +104,7 @@ jobs:
       - bump_version
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.ACCESS_TOKEN }}
