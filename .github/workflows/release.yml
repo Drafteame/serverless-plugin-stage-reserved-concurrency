@@ -69,8 +69,8 @@ jobs:
     needs:
       - bump_version
     permissions:
-      contents: read
-      packages: write
+      id-token: write
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
