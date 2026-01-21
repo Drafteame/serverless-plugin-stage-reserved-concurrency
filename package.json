@@ -3,6 +3,10 @@
   "version": "0.5.1",
   "description": "This plugin allows you to configure different reserved concurrency values for your Lambda functions depending on the deployment environment",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Drafteame/serverless-plugin-stage-reserved-concurrency.git"
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",
