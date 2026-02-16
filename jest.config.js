@@ -13,8 +13,4 @@ export default {
       },
     ],
   },
-  transformIgnorePatterns: ['node_modules/(?!(p-limit|yocto-queue)/)'],
-  moduleNameMapper: {
-    '^p-limit$': '<rootDir>/src/__mocks__/p-limit.js',
-  },
 };

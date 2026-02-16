@@ -1,11 +1,13 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 repos:
-  - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.4.0
+  - repo: local
     hooks:
       - id: eslint
-        files: \.[jt]sx?$ # *.js, *.jsx, *.ts and *.tsx
+        name: eslint
+        entry: npx eslint --fix
+        language: system
+        files: \.[jt]sx?$
         types: [file]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

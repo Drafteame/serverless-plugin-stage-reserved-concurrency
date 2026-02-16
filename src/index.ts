@@ -1,6 +1,6 @@
 // Importaciones de interfaces necesarias
-import { Serverless, ServerlessOptions, Logger, ServerlessProvider } from './interfaces';
 import chalk from 'chalk';
+import { Serverless, ServerlessOptions, Logger, ServerlessProvider } from './interfaces';
 
 interface FunctionConfig {
   reservedConcurrency?: number;
@@ -14,12 +14,19 @@ interface ProcessingResult {
 
 class StageBasedConcurrencyPlugin {
   private static readonly WARMUP_FUNCTION_IDENTIFIER = 'warmUp';
+
   private static readonly DEV_STAGES = ['dev', 'development', 'feature'];
+
   private static readonly AWS_CONCURRENCY_BATCH_SIZE = 5;
+
   private serverless: Serverless;
+
   private provider: ServerlessProvider;
+
   private log: Logger;
+
   private options: ServerlessOptions;
+
   public readonly hooks: Record<string, () => Promise<void>>;
 
   constructor(serverless: Serverless, options: ServerlessOptions) {
@@ -28,7 +35,7 @@ class StageBasedConcurrencyPlugin {
     this.provider = this.serverless.getProvider('aws');
     this.log = this._createLegacyLogger();
 
-    const stage = this.serverless.service.provider.stage;
+    const { stage } = this.serverless.service.provider;
     const isDev = this._isDevelopmentStage(stage);
 
     if (isDev) {
@@ -92,7 +99,7 @@ class StageBasedConcurrencyPlugin {
   async _removeReservedConcurrencyFromAws(): Promise<void> {
     return this._measureExecutionTime('Remove reserved concurrency from AWS for all functions', async () => {
       const functions = (this.serverless.service.functions ?? {}) as Record<string, FunctionConfig>;
-      const result = await this._processAwsFunctionsInBatches(Object.entries(functions) as [string, FunctionConfig][]);
+      const result = await this._processAwsFunctionsInBatches(Object.entries(functions));
       this._logAwsResult(result);
     });
   }
@@ -175,8 +182,8 @@ class StageBasedConcurrencyPlugin {
         return;
       }
 
-      const result = await this._processSingleAwsFunction(functionName!);
-      this._logSingleFunctionResult(functionName!, result);
+      const result = await this._processSingleAwsFunction(functionName);
+      this._logSingleFunctionResult(functionName, result);
     });
   }
 
