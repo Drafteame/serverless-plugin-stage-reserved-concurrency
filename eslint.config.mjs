@@ -1,37 +1,32 @@
-// @ts-check
-// Force this file to be treated as an ESM module
-import imp from 'eslint-plugin-import';
-import prettier from 'eslint-plugin-prettier';
-import tsPlugin from '@typescript-eslint/eslint-plugin';
-import tsParser from '@typescript-eslint/parser';
+import { configs, plugins } from 'eslint-config-airbnb-extended';
+import prettierConfig from 'eslint-config-prettier';
 
 export default [
   {
-    // Ignore the dist directory
-    ignores: ['dist/**'],
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
+  plugins.stylistic,
+  plugins.importX,
+  plugins.typescriptEslint,
+  ...configs.base.all,
   {
-    files: ['src/**/*.{js,ts}'],
-    plugins: {
-      import: imp,
-      prettier: prettier,
-      '@typescript-eslint': tsPlugin,
-    },
-    languageOptions: {
-      parser: tsParser,
-      parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-        project: './tsconfig.json',
-      },
-    },
+    files: ['src/**/*.ts'],
     rules: {
-      // Example of custom rules, you can add more or modify as needed
-      'import/prefer-default-export': 'off',
-      'no-console': 'warn',
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      'prettier/prettier': 'error', // Ensures that Prettier issues are flagged as errors
+      // Private methods use _ prefix by convention; harmless in TypeScript
+      'no-underscore-dangle': 'off',
+      // Plugin intentionally deletes properties from config objects
+      'no-param-reassign': ['error', { props: false }],
+      // Static-like helper methods that don't use `this` are acceptable
+      'class-methods-use-this': 'off',
+      // Allow ++ in loops and counters
+      'no-plusplus': 'off',
+      // Batch processing intentionally awaits in loops for rate limiting
+      'no-await-in-loop': 'off',
+      // Allow closures in loops when used with Promise.all batching
+      '@typescript-eslint/no-loop-func': 'off',
+      // Allow empty interfaces used as placeholder types
+      '@typescript-eslint/no-empty-object-type': 'off',
     },
   },
+  prettierConfig,
 ];
