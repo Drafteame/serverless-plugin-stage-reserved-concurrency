@@ -1,6 +1,6 @@
 {
   "name": "serverless-plugin-stage-reserved-concurrency",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "This plugin allows you to configure different reserved concurrency values for your Lambda functions depending on the deployment environment",
   "main": "dist/index.js",
   "repository": {
